@@ -1,0 +1,386 @@
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+#define MAX_NAME 50
+
+typedef struct {
+    int id;
+    char name[MAX_NAME];
+    int resource;
+    int profit;
+} Project;
+
+typedef struct {
+    int id;
+    char name[MAX_NAME];
+    int deadline;
+    int profit;
+} Job;
+
+/* ============================================================
+   PART 1: 0/1 KNAPSACK - DYNAMIC PROGRAMMING
+   ============================================================ */
+
+int knapsackDP(Project proj[], int n, int capacity,
+               int selected[], int *selectedCount, int printTable)
+{
+    int **dp = malloc((n + 1) * sizeof(int *));
+
+    for (int i = 0; i <= n; i++)
+        dp[i] = calloc((capacity + 1), sizeof(int));
+
+    /* Build DP table */
+    for (int i = 1; i <= n; i++) {
+        for (int w = 0; w <= capacity; w++) {
+
+            /* Project not selected */
+            dp[i][w] = dp[i - 1][w];
+
+            /* Project selected */
+            if (proj[i - 1].resource <= w) {
+
+                int taken =
+                    dp[i - 1][w - proj[i - 1].resource]
+                    + proj[i - 1].profit;
+
+                if (taken > dp[i][w])
+                    dp[i][w] = taken;
+            }
+        }
+    }
+
+    /* Print DP table */
+    if (printTable) {
+
+        printf("\n--- Dynamic Programming (Knapsack) Table ---\n");
+        printf("Rows = projects considered (0..%d), "
+               "Columns = capacity (0..%d)\n\n",
+               n, capacity);
+
+        printf("     ");
+
+        for (int w = 0; w <= capacity; w++)
+            printf("%4d", w);
+
+        printf("\n");
+
+        for (int i = 0; i <= n; i++) {
+
+            printf("P%-3d", i);
+
+            for (int w = 0; w <= capacity; w++)
+                printf("%4d", dp[i][w]);
+
+            printf("\n");
+        }
+    }
+
+    int maxProfit = dp[n][capacity];
+
+    /* Backtrack to find selected projects */
+    *selectedCount = 0;
+
+    int w = capacity;
+
+    for (int i = n; i > 0 && w >= 0; i--) {
+
+        if (dp[i][w] != dp[i - 1][w]) {
+
+            selected[(*selectedCount)++] = i - 1;
+
+            w -= proj[i - 1].resource;
+        }
+    }
+
+    /* Free memory */
+    for (int i = 0; i <= n; i++)
+        free(dp[i]);
+
+    free(dp);
+
+    return maxProfit;
+}
+
+/* ============================================================
+   PART 2: JOB SEQUENCING WITH DEADLINES - GREEDY
+   ============================================================ */
+
+int compareJobsByProfit(const void *a, const void *b)
+{
+    Job *j1 = (Job *)a;
+    Job *j2 = (Job *)b;
+
+    /* Sort jobs by decreasing profit */
+    return j2->profit - j1->profit;
+}
+
+int jobSequencingGreedy(Job jobs[], int n, int maxSlots,
+                        int slot[], int *scheduledCount)
+{
+    /* Sort jobs by profit */
+    qsort(jobs, n, sizeof(Job), compareJobsByProfit);
+
+    int *free_slot =
+        malloc((maxSlots + 1) * sizeof(int));
+
+    for (int i = 0; i <= maxSlots; i++) {
+        slot[i] = -1;
+        free_slot[i] = 1;
+    }
+
+    int totalProfit = 0;
+    *scheduledCount = 0;
+
+    /* Schedule each job */
+    for (int i = 0; i < n; i++) {
+
+        int lastSlot =
+            jobs[i].deadline < maxSlots
+            ? jobs[i].deadline
+            : maxSlots;
+
+        /* Find latest available slot */
+        for (int s = lastSlot; s >= 1; s--) {
+
+            if (free_slot[s]) {
+
+                slot[s] = i;
+                free_slot[s] = 0;
+
+                totalProfit += jobs[i].profit;
+                (*scheduledCount)++;
+
+                break;
+            }
+        }
+    }
+
+    free(free_slot);
+
+    return totalProfit;
+}
+
+/* ============================================================
+   PROJECT SELECTION DISPLAY
+   ============================================================ */
+
+void runProjectSelection(Project proj[], int n, int capacity)
+{
+    int selected[100];
+    int selectedCount = 0;
+
+    clock_t start = clock();
+
+    int maxProfit =
+        knapsackDP(proj, n, capacity,
+                   selected, &selectedCount,
+                   n <= 10);
+
+    clock_t end = clock();
+
+    double timeTaken =
+        ((double)(end - start)) / CLOCKS_PER_SEC;
+
+    int usedResource = 0;
+
+    printf("\n--- Dynamic Programming Result: Project Selection ---\n");
+
+    printf("Projects selected (of %d total, capacity = %d):\n",
+           n, capacity);
+
+    for (int i = selectedCount - 1; i >= 0; i--) {
+
+        Project p = proj[selected[i]];
+
+        printf("[ID %d] %-20s Resource=%3d Profit=%3d\n",
+               p.id,
+               p.name,
+               p.resource,
+               p.profit);
+
+        usedResource += p.resource;
+    }
+
+    printf("Maximum Achievable Profit : %d\n",
+           maxProfit);
+
+    printf("Total Resource Used       : %d / %d\n",
+           usedResource, capacity);
+
+    printf("Unused Resource Capacity  : %d\n",
+           capacity - usedResource);
+
+    printf("Execution Time            : %.6f seconds\n",
+           timeTaken);
+
+    printf("Time Complexity            : O(n * W)\n");
+    printf("Space Complexity           : O(n * W)\n");
+}
+
+/* ============================================================
+   JOB SEQUENCING DISPLAY
+   ============================================================ */
+
+void runJobSequencing(Job jobs[], int n, int maxSlots)
+{
+    int slot[100];
+    int scheduledCount = 0;
+
+    clock_t start = clock();
+
+    int totalProfit =
+        jobSequencingGreedy(jobs, n, maxSlots,
+                            slot, &scheduledCount);
+
+    clock_t end = clock();
+
+    double timeTaken =
+        ((double)(end - start)) / CLOCKS_PER_SEC;
+
+    printf("\n--- Greedy Result: Job Sequencing with Deadlines ---\n");
+
+    printf("Time Slot Sequence (1..%d):\n",
+           maxSlots);
+
+    for (int s = 1; s <= maxSlots; s++) {
+
+        if (slot[s] != -1) {
+
+            printf("Slot %d -> Job ID %d (%s), "
+                   "Deadline=%d, Profit=%d\n",
+                   s,
+                   jobs[slot[s]].id,
+                   jobs[slot[s]].name,
+                   jobs[slot[s]].deadline,
+                   jobs[slot[s]].profit);
+
+        } else {
+
+            printf("Slot %d -> (empty)\n", s);
+        }
+    }
+
+    printf("Jobs Scheduled : %d / %d\n",
+           scheduledCount, n);
+
+    printf("Maximum Job Profit : %d\n",
+           totalProfit);
+
+    printf("Execution Time : %.6f seconds\n",
+           timeTaken);
+
+    printf("Time Complexity : O(n^2)\n");
+    printf("Space Complexity : O(n + maxSlots)\n");
+}
+
+/* ============================================================
+   GREEDY COUNTEREXAMPLE FOR 0/1 KNAPSACK
+   ============================================================ */
+
+void greedyKnapsackCounterexample(void)
+{
+    printf("\n=== Counterexample: Greedy fails for 0/1 Knapsack ===\n");
+
+    Project items[] = {
+        {1, "ItemA", 10, 60},
+        {2, "ItemB", 20, 100},
+        {3, "ItemC", 30, 120}
+    };
+
+    int n = 3;
+    int capacity = 50;
+
+    printf("Greedy by profit/resource ratio:\n");
+
+    printf("ItemA + ItemB -> Resource = 30, Profit = 160\n");
+
+    printf("Optimal solution using DP:\n");
+
+    int selected[10];
+    int selectedCount = 0;
+
+    int optimal =
+        knapsackDP(items, n, capacity,
+                   selected, &selectedCount, 0);
+
+    printf("Optimal Profit = %d\n", optimal);
+
+    printf("Optimal selection: ItemB + ItemC\n");
+    printf("Resource = 50\n");
+    printf("Profit = 220\n");
+
+    printf("\nConclusion:\n");
+    printf("Greedy strategy is NOT guaranteed to be optimal "
+           "for 0/1 Knapsack.\n");
+
+    printf("Dynamic Programming guarantees the optimal solution.\n");
+}
+
+/* ============================================================
+   MAIN FUNCTION
+   ============================================================ */
+
+int main(void)
+{
+    /* Project dataset */
+
+    Project projects[] = {
+
+        {1, "AI Platform",      20, 120},
+        {2, "Mobile App",       30, 150},
+        {3, "Cloud Migration",  10,  60},
+        {4, "IoT Sensors",      40, 200},
+        {5, "Data Warehouse",   15,  90},
+        {6, "Security Upgrade", 25, 140}
+    };
+
+    int numProjects = 6;
+
+    int resourceCapacity = 70;
+
+    /* Job dataset */
+
+    Job jobs[] = {
+
+        {1, "Design Review",     2,  60},
+        {2, "Code Freeze",       1, 100},
+        {3, "Client Demo",       3,  20},
+        {4, "Server Migration",  2,  40},
+        {5, "Final Testing",     1,  20},
+        {6, "Deployment",        3,  30}
+    };
+
+    int numJobs = 6;
+
+    int maxTimeSlots = 3;
+
+    /* Header */
+
+    printf("=====================================================================\n");
+    printf("       SMART RESOURCE ALLOCATION AND OPTIMIZATION SYSTEM\n");
+    printf("=====================================================================\n");
+
+    /* Run Dynamic Programming */
+
+    runProjectSelection(
+        projects,
+        numProjects,
+        resourceCapacity
+    );
+
+    /* Run Greedy Job Sequencing */
+
+    runJobSequencing(
+        jobs,
+        numJobs,
+        maxTimeSlots
+    );
+
+    /* Show Greedy Counterexample */
+
+    greedyKnapsackCounterexample();
+
+    return 0;
+}
